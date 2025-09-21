@@ -15,3 +15,4 @@ Docker/WebService/test/simplu.out.docx
 WebServiceModules/RegexAnnotator/debug.py
 WebServiceModules/BERTAnnotator/model-rbsmall.tar.gz
 WebServiceModules/BERTAnnotator/model-bert-corola-best.zip
+/.vs
