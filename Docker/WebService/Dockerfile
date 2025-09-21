@@ -20,7 +20,7 @@ RUN apt-get install -y gcc g++ make automake autoconf bison flex zlib1g zlib1g-d
     libffi-dev libssl-dev libbz2-dev libreadline-dev libgdbm-dev uuid uuid-dev \
     xz-utils libsqlite3-dev ncurses-dev
 
-
+# (Ai păstrat aceste variabile; le las neschimbate)
 ENV PATH=/usr/local/cuda/bin:$PATH
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 
@@ -32,22 +32,29 @@ RUN cd /programs_build/python_build/cpython-3.11.4 && ./configure --prefix=/prog
 RUN cd /programs_build/python_build/cpython-3.11.4 && make -j10
 RUN cd /programs_build/python_build/cpython-3.11.4 && make -j10 install
 
-# Single venv (Python 3.11)
+# venv-ul principal (nume păstrat)
 RUN /programs/python-3.11/bin/python3 -m venv /venv
 
 # Code & modules
 COPY --from=intermediate /saroj/WebServiceModules/ /modules/
 RUN rm -f /bin/sh && ln -s /bin/bash /bin/sh
 
-# Python deps:
-#  - TextExtractor + RNER din requirements
-#  - Torch CUDA (cu124) — match pentru CUDA 12.4 instalată mai sus
+# Python deps pentru /venv (TextExtractor etc.) + Torch cu CUDA 12.4
 RUN bash -lc 'source /venv/bin/activate && \
   pip3 install --upgrade pip && \
   if [ -f /modules/TextExtractor/requirements.txt ]; then pip3 install -r /modules/TextExtractor/requirements.txt; fi && \
   if [ -f /modules/RNER/requirements.txt ]; then pip3 install -r /modules/RNER/requirements.txt || true; fi && \
   pip3 install --index-url https://download.pytorch.org/whl/cu124 torch && \
   pip3 install rwpt scikit-learn spacy flask'
+
+# --- MINIMAL CHANGE: păstrăm denumirea istorica /venv-3.7 dar folosim Python 3.11 ---
+RUN /programs/python-3.11/bin/python3 -m venv /venv-3.7
+RUN bash -lc 'source /venv-3.7/bin/activate && \
+  pip3 install --upgrade pip && \
+  if [ -f /modules/RNER/requirements.txt ]; then pip3 install -r /modules/RNER/requirements.txt || true; fi && \
+  pip3 install --index-url https://download.pytorch.org/whl/cu124 torch && \
+  pip3 install rwpt scikit-learn spacy flask'
+# -------------------------------------------------------------------------------
 
 # Java
 COPY openjdk-17-jre-headless_17.0.10+7-1~deb11u1_amd64.deb /
