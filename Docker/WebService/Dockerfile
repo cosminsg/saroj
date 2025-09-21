@@ -22,10 +22,9 @@ RUN apt-get install -y gcc g++ make automake autoconf bison flex zlib1g zlib1g-d
 
 # --- CUDA Toolkit inside the container (GPU support) ---
 # NOTE: Driver stays on the HOST; this installs only the CUDA toolkit in the image.
-RUN wget -O /tmp/cuda.run \
-      https://developer.download.nvidia.com/compute/cuda/12.4.1/local_installers/cuda_12.4.1_550.54.15_linux.run \
+RUN wget -q -O /tmp/cuda.run https://developer.download.nvidia.com/compute/cuda/12.4.1/local_installers/cuda_12.4.1_550.54.15_linux.run \
  && chmod +x /tmp/cuda.run \
- && /tmp/cuda.run --silent --toolkit \
+ && /tmp/cuda.run --silent --toolkit > /dev/null \
  && rm /tmp/cuda.run
 ENV PATH=/usr/local/cuda/bin:$PATH
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
