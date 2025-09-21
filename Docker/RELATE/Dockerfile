@@ -31,23 +31,15 @@ RUN cd /programs_build/python_build/cpython-3.7.4 && ./configure --prefix=/progr
 RUN cd /programs_build/python_build/cpython-3.7.4 && make -j10
 RUN cd /programs_build/python_build/cpython-3.7.4 && make -j10 install
 
-# Create venv (Py3.11) - TextExtractor etc.
+# Create venv
 RUN /programs/python-3.11/bin/python3 -m venv /venv
 COPY --from=intermediate /saroj/WebServiceModules/ /modules/
 RUN rm -f /bin/sh ; ln -s /bin/bash /bin/sh
-RUN bash -lc 'source /venv/bin/activate && \
-  pip3 install --upgrade pip && \
-  pip3 install -r /modules/TextExtractor/requirements.txt && \
-  pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
-  pip3 install rwpt scikit-learn'
+RUN source /venv/bin/activate && pip3 install --upgrade pip &&  pip3 install -r /modules/TextExtractor/requirements.txt && pip3 install torch --index-url https://download.pytorch.org/whl/cpu && pip3 install rwpt scikit-learn
 
-# Create venv (Py3.7) - RNER (GPU ENABLED)
 RUN /programs/python-3.7/bin/python3 -m venv /venv-3.7
-RUN bash -lc 'source /venv-3.7/bin/activate && \
-  pip3 install --upgrade pip && \
-  pip3 install -r /modules/RNER/requirements.txt && \
-  pip3 install torch==1.13.1+cu117 --index-url https://download.pytorch.org/whl/cu117 && \
-  pip3 install rwpt scikit-learn spacy flask'
+RUN source /venv-3.7/bin/activate && pip3 install --upgrade pip &&  pip3 install -r /modules/RNER/requirements.txt && pip3 install torch --index-url https://download.pytorch.org/whl/cpu && pip3 install rwpt scikit-learn spacy flask
+
 
 # Setup Java
 #RUN apt-get install -y default-jre
@@ -67,6 +59,7 @@ ENV APACHE_RUN_GROUP www-data
 ENV APACHE_LOG_DIR /var/log/apache2
 ENV APACHE_LOCK_DIR /var/lock/apache2
 ENV APACHE_PID_FILE /var/run/apache2.pid
+
 
 COPY docker/entrypoint.sh /
 RUN chmod a+rx /entrypoint.sh
