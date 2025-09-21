@@ -1,7 +1,6 @@
 FROM alpine as intermediate
 LABEL stage=intermediate
-RUN apk update && \
-    apk add --update git
+RUN apk update && apk add --update git
 RUN git clone --depth 1 --branch master https://github.com/racai-ai/saroj.git
 
 FROM php:7.4-apache
@@ -16,51 +15,65 @@ ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 
-# Build Python
-RUN apt-get install -y gcc g++ make automake autoconf bison flex zlib1g zlib1g-dev libffi-dev libssl-dev libbz2-dev libreadline-dev libgdbm-dev uuid uuid-dev xz-utils libsqlite3-dev ncurses-dev
+# Build toolchain for Python
+RUN apt-get install -y gcc g++ make automake autoconf bison flex zlib1g zlib1g-dev \
+    libffi-dev libssl-dev libbz2-dev libreadline-dev libgdbm-dev uuid uuid-dev \
+    xz-utils libsqlite3-dev ncurses-dev
+
+# --- CUDA Toolkit inside the container (GPU support) ---
+# NOTE: Driver stays on the HOST; this installs only the CUDA toolkit in the image.
+RUN wget -O /tmp/cuda.run \
+      https://developer.download.nvidia.com/compute/cuda/12.4.1/local_installers/cuda_12.4.1_550.54.15_linux.run \
+ && chmod +x /tmp/cuda.run \
+ && /tmp/cuda.run --silent --toolkit \
+ && rm /tmp/cuda.run
+ENV PATH=/usr/local/cuda/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+
+# Build & install Python 3.11 (din surse, ca în original)
 RUN mkdir -p /programs ; mkdir -p /programs_build/python_build
-RUN cd /programs_build/python_build && wget https://github.com/python/cpython/archive/v3.11.4.tar.gz 
-RUN cd /programs_build/python_build && tar -zxf v3.11.4.tar.gz 
+RUN cd /programs_build/python_build && wget https://github.com/python/cpython/archive/v3.11.4.tar.gz
+RUN cd /programs_build/python_build && tar -zxf v3.11.4.tar.gz
 RUN cd /programs_build/python_build/cpython-3.11.4 && ./configure --prefix=/programs/python-3.11 --enable-optimizations
 RUN cd /programs_build/python_build/cpython-3.11.4 && make -j10
 RUN cd /programs_build/python_build/cpython-3.11.4 && make -j10 install
 
-RUN cd /programs_build/python_build && wget https://github.com/python/cpython/archive/v3.7.4.tar.gz 
-RUN cd /programs_build/python_build && tar -zxf v3.7.4.tar.gz 
-RUN cd /programs_build/python_build/cpython-3.7.4 && ./configure --prefix=/programs/python-3.7
-RUN cd /programs_build/python_build/cpython-3.7.4 && make -j10
-RUN cd /programs_build/python_build/cpython-3.7.4 && make -j10 install
-
-# Create venv
+# Single venv (Python 3.11)
 RUN /programs/python-3.11/bin/python3 -m venv /venv
+
+# Code & modules
 COPY --from=intermediate /saroj/WebServiceModules/ /modules/
-RUN rm -f /bin/sh ; ln -s /bin/bash /bin/sh
-RUN source /venv/bin/activate && pip3 install --upgrade pip &&  pip3 install -r /modules/TextExtractor/requirements.txt && pip3 install torch --index-url https://download.pytorch.org/whl/cpu && pip3 install rwpt scikit-learn
+RUN rm -f /bin/sh && ln -s /bin/bash /bin/sh
 
-RUN /programs/python-3.7/bin/python3 -m venv /venv-3.7
-RUN source /venv-3.7/bin/activate && pip3 install --upgrade pip &&  pip3 install -r /modules/RNER/requirements.txt && pip3 install torch --index-url https://download.pytorch.org/whl/cpu && pip3 install rwpt scikit-learn spacy flask
+# Python deps:
+#  - TextExtractor + RNER din requirements
+#  - Torch CUDA (cu124) — match pentru CUDA 12.4 instalată mai sus
+RUN bash -lc 'source /venv/bin/activate && \
+  pip3 install --upgrade pip && \
+  if [ -f /modules/TextExtractor/requirements.txt ]; then pip3 install -r /modules/TextExtractor/requirements.txt; fi && \
+  if [ -f /modules/RNER/requirements.txt ]; then pip3 install -r /modules/RNER/requirements.txt || true; fi && \
+  pip3 install --index-url https://download.pytorch.org/whl/cu124 torch && \
+  pip3 install rwpt scikit-learn spacy flask'
 
-
-# Setup Java
-#RUN apt-get install -y default-jre
-#RUN apt-get install -y openjdk-17-jre-headless
+# Java
 COPY openjdk-17-jre-headless_17.0.10+7-1~deb11u1_amd64.deb /
 RUN apt install -y /openjdk-17-jre-headless_17.0.10+7-1~deb11u1_amd64.deb
 
+# Rules
 COPY --from=intermediate /saroj/Rules/ /Rules/
 
-# Setup site
+# Site
 COPY --from=intermediate /saroj/WebService/web/ /site/
 RUN chown -R www-data:www-data /site/
 COPY conf/apache2.conf /etc/apache2/
 COPY conf/php.ini /usr/local/etc/php/
-ENV APACHE_RUN_USER www-data
-ENV APACHE_RUN_GROUP www-data
-ENV APACHE_LOG_DIR /var/log/apache2
-ENV APACHE_LOCK_DIR /var/lock/apache2
-ENV APACHE_PID_FILE /var/run/apache2.pid
+ENV APACHE_RUN_USER=www-data
+ENV APACHE_RUN_GROUP=www-data
+ENV APACHE_LOG_DIR=/var/log/apache2
+ENV APACHE_LOCK_DIR=/var/lock/apache2
+ENV APACHE_PID_FILE=/var/run/apache2.pid
 
-
+# Entrypoint
 COPY docker/entrypoint.sh /
 RUN chmod a+rx /entrypoint.sh
 
