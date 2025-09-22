@@ -1,51 +1,81 @@
 ﻿FROM alpine as intermediate
 LABEL stage=intermediate
-RUN apk update && \
-    apk add --update git
-RUN git clone --depth 1 --branch master https://github.com/racai-ai/saroj.git
+RUN apk update && apk add --no-cache git \
+ && git clone --depth 1 --branch master https://github.com/racai-ai/saroj.git
 
 FROM php:7.4-apache
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update
+ARG MAKE_JOBS
+ENV MAKE_JOBS=${MAKE_JOBS:-$(nproc)}
 
-# System stuff
-RUN apt-get install -y tar zip unzip curl wget mc locales
-RUN echo "en_US.UTF-8 UTF-8" | tee -a /etc/locale.gen
-RUN locale-gen en_US.UTF-8
+RUN set -eux; \
+    apt-get update; \
+    # System stuff
+    apt-get install -y --no-install-recommends \
+      tar zip unzip curl wget mc locales ca-certificates \
+      gcc g++ make automake autoconf bison flex zlib1g zlib1g-dev \
+      libffi-dev libssl-dev libbz2-dev libreadline-dev libgdbm-dev \
+      uuid uuid-dev xz-utils libsqlite3-dev ncurses-dev; \
+    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen; \
+    locale-gen en_US.UTF-8; \
+    rm -rf /var/lib/apt/lists/*
 ENV LC_ALL=en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 
 # Build Python
-RUN apt-get install -y gcc g++ make automake autoconf bison flex zlib1g zlib1g-dev libffi-dev libssl-dev libbz2-dev libreadline-dev libgdbm-dev uuid uuid-dev xz-utils libsqlite3-dev ncurses-dev
-RUN mkdir -p /programs ; mkdir -p /programs_build/python_build
-RUN cd /programs_build/python_build && wget https://github.com/python/cpython/archive/v3.11.4.tar.gz 
-RUN cd /programs_build/python_build && tar -zxf v3.11.4.tar.gz 
-RUN cd /programs_build/python_build/cpython-3.11.4 && ./configure --prefix=/programs/python-3.11 --enable-optimizations
-RUN cd /programs_build/python_build/cpython-3.11.4 && make -j10
-RUN cd /programs_build/python_build/cpython-3.11.4 && make -j10 install
+RUN set -eux; \
+    mkdir -p /programs /programs_build/python_build; \
+    cd /programs_build/python_build; \
+    wget -q https://github.com/python/cpython/archive/v3.11.4.tar.gz; \
+    tar -zxf v3.11.4.tar.gz; \
+    cd cpython-3.11.4; \
+    ./configure --prefix=/programs/python-3.11 --enable-optimizations; \
+    make -j"${MAKE_JOBS}"; \
+    make install; \
+    cd /; \
+    rm -rf /programs_build/python_build/cpython-3.11.4 /programs_build/python_build/v3.11.4.tar.gz
 
-RUN cd /programs_build/python_build && wget https://github.com/python/cpython/archive/v3.7.4.tar.gz 
-RUN cd /programs_build/python_build && tar -zxf v3.7.4.tar.gz 
-RUN cd /programs_build/python_build/cpython-3.7.4 && ./configure --prefix=/programs/python-3.7
-RUN cd /programs_build/python_build/cpython-3.7.4 && make -j10
-RUN cd /programs_build/python_build/cpython-3.7.4 && make -j10 install
+RUN set -eux; \
+    cd /programs_build/python_build; \
+    wget -q https://github.com/python/cpython/archive/v3.7.4.tar.gz; \
+    tar -zxf v3.7.4.tar.gz; \
+    cd cpython-3.7.4; \
+    ./configure --prefix=/programs/python-3.7; \
+    make -j"${MAKE_JOBS}"; \
+    make install; \
+    cd /; \
+    rm -rf /programs_build/python_build/cpython-3.7.4 /programs_build/python_build/v3.7.4.tar.gz
 
 # Create venv
-RUN /programs/python-3.11/bin/python3 -m venv /venv
+RUN /programs/python-3.11/bin/python3 -m venv /venv \
+ && /programs/python-3.7/bin/python3  -m venv /venv-3.7
+
+# copiem requirements separat ca să cacheze pip
+COPY --from=intermediate /saroj/WebServiceModules/TextExtractor/requirements.txt /tmp/tx-req.txt
+COPY --from=intermediate /saroj/WebServiceModules/RNER/requirements.txt /tmp/rner-req.txt
+
+RUN set -eux; \
+    /venv/bin/pip3 install --upgrade pip; \
+    /venv/bin/pip3 install --no-cache-dir -r /tmp/tx-req.txt; \
+    /venv/bin/pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu; \
+    /venv/bin/pip3 install --no-cache-dir rwpt scikit-learn; \
+    /venv-3.7/bin/pip3 install --upgrade pip; \
+    /venv-3.7/bin/pip3 install --no-cache-dir -r /tmp/rner-req.txt; \
+    /venv-3.7/bin/pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu; \
+    /venv-3.7/bin/pip3 install --no-cache-dir rwpt scikit-learn spacy flask; \
+    rm -rf /root/.cache/pip
+
 COPY --from=intermediate /saroj/WebServiceModules/ /modules/
-RUN rm -f /bin/sh ; ln -s /bin/bash /bin/sh
-RUN source /venv/bin/activate && pip3 install --upgrade pip &&  pip3 install -r /modules/TextExtractor/requirements.txt && pip3 install torch --index-url https://download.pytorch.org/whl/cpu && pip3 install rwpt scikit-learn
-
-RUN /programs/python-3.7/bin/python3 -m venv /venv-3.7
-RUN source /venv-3.7/bin/activate && pip3 install --upgrade pip &&  pip3 install -r /modules/RNER/requirements.txt && pip3 install torch --index-url https://download.pytorch.org/whl/cpu && pip3 install rwpt scikit-learn spacy flask
-
 
 # Setup Java
 #RUN apt-get install -y default-jre
 #RUN apt-get install -y openjdk-17-jre-headless
 COPY openjdk-17-jre-headless_17.0.10+7-1~deb11u1_amd64.deb /
-RUN apt install -y /openjdk-17-jre-headless_17.0.10+7-1~deb11u1_amd64.deb
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ./openjdk-17-jre-headless_17.0.10+7-1~deb11u1_amd64.deb; \
+    rm -rf /var/lib/apt/lists/* /openjdk-17-jre-headless_17.0.10+7-1~deb11u1_amd64.deb
 
 COPY --from=intermediate /saroj/Rules/ /Rules/
 
@@ -54,14 +84,13 @@ COPY --from=intermediate /saroj/WebService/web/ /site/
 RUN chown -R www-data:www-data /site/
 COPY conf/apache2.conf /etc/apache2/
 COPY conf/php.ini /usr/local/etc/php/
-ENV APACHE_RUN_USER www-data
-ENV APACHE_RUN_GROUP www-data
-ENV APACHE_LOG_DIR /var/log/apache2
-ENV APACHE_LOCK_DIR /var/lock/apache2
-ENV APACHE_PID_FILE /var/run/apache2.pid
+ENV APACHE_RUN_USER=www-data \
+    APACHE_RUN_GROUP=www-data \
+    APACHE_LOG_DIR=/var/log/apache2 \
+    APACHE_LOCK_DIR=/var/lock/apache2 \
+    APACHE_PID_FILE=/var/run/apache2.pid
 
-
-COPY docker/entrypoint.sh /
+COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod a+rx /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
