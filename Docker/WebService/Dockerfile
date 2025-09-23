@@ -69,8 +69,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     /venv-3.7/bin/pip3 install -U pip setuptools wheel && \
     /venv-3.7/bin/pip3 install "numpy==1.21.6" && \
     /venv-3.7/bin/pip3 install -r /tmp/rner-req.txt && \
-    /venv-3.7/bin/pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
-    /venv-3.7/bin/pip3 install rwpt scikit-learn spacy flask
+    /venv-3.7/bin/pip3 install torch==1.13.1+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html && \
+    /venv-3.7/bin/pip3 install rwpt "scikit-learn==1.0.2" "flask<=2.2.5" "spacy==2.3.7"
 
 # După ce s-au instalat deps, copiem restul modulelor (nu mai invalidează cache-ul pip la fiecare commit)
 COPY --from=intermediate /saroj/WebServiceModules/ /modules/
