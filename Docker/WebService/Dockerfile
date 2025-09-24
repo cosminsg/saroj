@@ -55,7 +55,7 @@ RUN /venv/bin/pip3 install -U "pip<24.1" "setuptools<60" "wheel<0.40" "cython<3"
 RUN /venv/bin/pip3 install torch==1.13.1+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
 # --- fairseq: bump la 0.10.2 (mai aproape de 0.9, API relativ stabil) ---
-RUN /venv/bin/pip3 install --no-build-isolation "fairseq==0.10.2"
+RUN /venv/bin/pip3 install --no-build-isolation "fairseq==0.12.2"
 
 # --- instalează restul dependențelor RNER, dar ignoră pin-ul fairseq==0.9.0 din requirements ---
 COPY --from=intermediate /saroj/WebServiceModules/RNER/requirements.txt /tmp/rner-req.txt
