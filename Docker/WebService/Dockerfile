@@ -48,16 +48,19 @@ RUN /venv/bin/pip3 install -U pip setuptools wheel && \
     /venv/bin/pip3 install rwpt scikit-learn
 
 # RNER deps (în același venv, accesat prin aliasul /venv-3.7)
-# --- preinstalăm tool-urile de build compatibile și Torch compatibil cu fairseq 0.9 ---
+# --- toolchain de build pt pachete vechi (compat Py3.11) ---
 RUN /venv/bin/pip3 install -U "pip<24.1" "setuptools<60" "wheel<0.40" "cython<3" "numpy<2"
-# fairseq 0.9.0 funcționează bine cu torch ~1.10 (CPU wheel)
-RUN /venv/bin/pip3 install torch==1.10.2+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
-# --- instalăm explicit fairseq și pytorch-transformers fără build isolation ---
-RUN /venv/bin/pip3 install --no-build-isolation "fairseq==0.9.0" "pytorch-transformers==1.2.0"
+# --- PyTorch compatibil cu cp311 ---
+RUN /venv/bin/pip3 install torch==1.13.1+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
-# abia apoi restul din requirements (va vedea că fairseq/pytorch-transformers sunt deja prezente și le lasă în pace)
-RUN /venv/bin/pip3 install -r /modules/RNER/requirements.txt
+# --- fairseq: bump la 0.10.2 (mai aproape de 0.9, API relativ stabil) ---
+RUN /venv/bin/pip3 install --no-build-isolation "fairseq==0.10.2"
+
+# --- instalează restul dependențelor RNER, dar ignoră pin-ul fairseq==0.9.0 din requirements ---
+COPY --from=intermediate /saroj/WebServiceModules/RNER/requirements.txt /tmp/rner-req.txt
+RUN awk '!/^fairseq==/ {print}' /tmp/rner-req.txt > /tmp/rner-req-no-fairseq.txt
+RUN /venv/bin/pip3 install -r /tmp/rner-req-no-fairseq.txt
 
 # Setup Java
 COPY openjdk-17-jre-headless_17.0.10+7-1~deb11u1_amd64.deb /
